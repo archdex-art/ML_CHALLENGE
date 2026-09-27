@@ -42,6 +42,21 @@ def fit(X, y, Xv, yv, w=None, rounds=5000):
     dv = xgb.QuantileDMatrix(Xv, label=yv, ref=d)
     return xgb.train(PARAMS, d, rounds, evals=[(dv, "v")], early_stopping_rounds=100, verbose_eval=False)
 
+def with_extra(f, split):
+    """Join optional extra pair-feature tables ($EXTRA = comma list of dirs under $ER_WORK, {split}.parquet)."""
+    for d in [x for x in os.environ.get("EXTRA", "").split(",") if x]:
+        f = f.merge(pd.read_parquet(f"{W}/{d}/{split}.parquet"), on=["s1", "cand"], how="left")
+    return f
+
+
+def read_pairs(path):
+    """A matching_results.tsv -> DataFrame[s1, cand] of int ids."""
+    m = C.read_tsv(path)
+    e = m.assign(c=m.matched_entity_ids.str.split(",")).explode("c")
+    e = e[e.c.fillna("") != ""]
+    return pd.DataFrame({"s1": C.id_to_int(e.source1_entity_id).values, "cand": C.id_to_int(e.c).values})
+
+
 
 def run(tag, drop, bs):
     out = f"{W}/runs/{tag}"
@@ -50,7 +65,7 @@ def run(tag, drop, bs):
     roles = roles[roles.role.isin(["trn", "val"])]
     gt_all = pd.read_parquet(f"{W}/gt.parquet")
     gt = gt_all[gt_all.s1.isin(roles.s1)].drop_duplicates()
-    f = load("train")
+    f = with_extra(load("train"), "train")
     f["y"] = f.merge(gt.assign(y=1), on=["s1", "cand"], how="left").y.fillna(0).values
     f["role"] = f.s1.map(roles.set_index("s1").role)
     feats1 = [c for c in f.columns if c not in F.AUX + ["y", "role"] + drop]
@@ -100,18 +115,25 @@ def run(tag, drop, bs):
 
     scored = []
     for p in sorted(glob.glob(f"{O}/test_*.parquet")):
-        t = pd.read_parquet(p)
+        t = with_extra(pd.read_parquet(p), "test")
         t2 = F.stage2(t, predict(m1, t[feats1]))
         scored.append(pd.DataFrame({"s1": t.s1, "cand": t.cand, "p": predict(m2, t2[feats2])}))
     scored = pd.concat(scored, ignore_index=True)
     scored.to_parquet(f"{out}/test_scored.parquet")
     s1_ids = pd.read_parquet(f"{W}/test_rec.parquet", columns=["id", "src"]).query("src == 1").id.values
+    teacher = os.environ.get("TEACHER")
+    tpairs = read_pairs(teacher) if teacher else None
+    cty = pd.read_parquet(f"{W}/test_rec.parquet", columns=["id", "country"]).set_index("id").country
     for b in bs:
         sel = C.decide(scored, mode="expf", a=1.4, b=b)
         d = f"{out}/b{b}"
         os.makedirs(d, exist_ok=True)
         write_lists(sel, s1_ids, "matched_entity_ids", f"{d}/matching_results.tsv")
         print(tag, "test b", b, "pairs", len(sel), "empty", len(s1_ids) - sel.s1.nunique(), flush=True)
+        if tpairs is not None:
+            fa = C.f05_per_entity(sel, tpairs, s1_ids)
+            print(tag, "b", b, "agreement F0.5 vs TEACHER", round(fa.mean(), 5),
+                  fa.groupby(cty.reindex(fa.index).values).mean().round(4).to_dict(), flush=True)
 
 
 if __name__ == "__main__":

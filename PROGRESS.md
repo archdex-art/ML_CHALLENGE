@@ -133,7 +133,49 @@ Rules: no external data lookup (disqualification); final models must be MIT/Apac
    ```
    → `results_v3_nocluster/b-2.5/matching_results.tsv`.
 
-## Research after v4c (2026-09-27): where the remaining loss is
+## Teacher file (0.98155 on the LB) and the agreement proxy (2026-09-27)
+A team submission scored **0.98155** (`~/Desktop/results/teacher_098155.tsv`). All its pairs lie inside our
+8.5/S1 candidate set. Proxy = macro F0.5 of our test selection scored against the teacher's pairs as truth.
+
+| file | LB | proxy vs teacher |
+|---|---|---|
+| v1 (`results/output`) | 0.954 | 0.94187 |
+| v4c | 0.971562 | 0.97647 |
+| base (local rebuild of v3 nocluster) | (v3: 0.973444) | 0.98059 |
+
+The proxy orders all three known LB points correctly; validation did not (v4c > base on val).
+The proxy cannot show a score *above* the teacher — only closeness to it.
+
+What the teacher does differently (measured on test, one-word swaps at the same house number):
+- France: rejects swaps to ordinary French words (groupe 0.05, club 0.08, ecole 0.09, sportive 0.01, union
+  0.01) where v4 accepted ~45–50 %; accepts noise words (compagnie 0.80, services 0.88, plus 0.99).
+- US: accepts partners / incorporated / llc swaps (0.93–0.96; train truth 0.955–0.976) where v4 at b=-2.5
+  accepted 0.46–0.72.
+- Same pattern as train truth: a true copy only gains words from a small noise set.
+
+Fix: `experiments/noise_tok.py` — supervised noise score per token = #(extra token of a true match, GT of S1s
+outside trn/val) / (#train S2/S3 names containing it + 10); unseen tokens score 0; pair features
+nz_min / nz_max / nz_zero. `NOISE_MAP=legal` also maps French legal forms (sarl, sas, sasu, eurl, sa, sci, snc,
+ei) to llc (their house-number agreement on test France, 0.83–0.85, equals English legal forms').
+
+| run (b=-2.5, no cluster features) | val best | proxy | France | India | US |
+|---|---|---|---|---|---|
+| v4 | 0.98596 | 0.97959 | 0.9357 | 0.9893 | 0.9849 |
+| v5 (+ noise, map v5) | 0.98640 | 0.98460 | 0.9649 | 0.9887 | 0.9872 |
+| v5w2 (+ WNEG 2) | 0.98644 | 0.98492 | 0.9672 | 0.9886 | 0.9874 |
+| **v6w2** (+ legal map) | 0.98645 | **0.98563** | 0.9729 | 0.9885 | 0.9872 |
+| v6w2 with cluster features (accidental run) | 0.98700 | 0.98186 @ b=-1.5 | 0.9591 | 0.9877 | 0.9836 |
+
+Cluster features again lower the proxy while raising val — consistent with both LB results.
+
+Probes (all PASS `--check-ids`, `~/Desktop/results/probes/`):
+1. `v6w2_b-2.5` — our own model; expected between 0.9734 and 0.98155 (proxy-based, not measured).
+2. `teacher_minus_v6w2_p<0.01` — teacher minus 11 023 pairs our model scores p' < 0.01 (on val such pairs
+   match 0.5 % of the time); France 5378, India 2948, US 2697.
+3. `teacher_plus_v6w2_p>0.99` — teacher plus 9 152 pairs we score p' > 0.99 (val precision 99.97 %) whose
+   record the teacher gives to no S1.
+Probes 2 and 3 are the only ones that can beat 0.98155; submit them one at a time.
+
 All numbers on v4c; "calibrated" = a=1.4, b=-2.5 (the submitted rule).
 
 | measurement | result | reading |
