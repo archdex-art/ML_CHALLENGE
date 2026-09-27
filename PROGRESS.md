@@ -150,6 +150,15 @@ All numbers on v4c; "calibrated" = a=1.4, b=-2.5 (the submitted rule).
 | capacity (depth 10, eta 0.03) | 0.98670 vs 0.98668 | XGBoost tuning is exhausted |
 | ensembles of v4 variants | ≤ +0.0001 | not worth a submission |
 
+### Evidence after v4c = 0.971562 (LB)
+- Val cannot see the failure: v4c beats v4 on val in every bucket of distractors-per-S1 (0 to 5+:
+  +0.0005 to +0.0026), so no val reweighting by distractor count would have predicted the LB drop.
+- Test shows it: of the 71 654 pairs v4c selects and v4 does not, 35.4 % have a house number within 50 of
+  the S1's but not equal (hn_rel 2); among all v4 selections that share is 1.3 %; train match rate of such
+  pairs is 6 %. The cluster features pull in near-number (sibling) pairs.
+- v4 vs base (no new features) does not carry that signature: pairs only v4 selects are 11.7 % near-number,
+  pairs only base selects 12.4 %. This supports, but does not prove, `v4_b-2.5` >= base on the LB.
+
 ## Next steps, ranked by expected leaderboard gain per effort
 Ready probes (all PASS `--check-ids`, in `~/Desktop/results/probes/`). After v4c = 0.971562, the v4c-based
 ones are deprioritised; submit in this order: `v4_b-2.5`; if it is below 0.973444, `v4_USIN+base_FR`
