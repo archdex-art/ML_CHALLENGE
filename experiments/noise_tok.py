@@ -28,7 +28,8 @@ MAPS = {"v5": {"compagnie": "company", "societe": "company", "associes": "associ
 MAPS["legal"] = {**MAPS["v5"], **dict.fromkeys(["sarl", "sas", "sasu", "eurl", "sa", "sci", "snc", "ei"], "llc")}
 MAP_NAME = os.environ.get("NOISE_MAP", "v5")
 FR_EN = MAPS[MAP_NAME]
-OUT = f"{W}/feat_noise_{MAP_NAME}"
+ACRO = os.environ.get("ACRO") == "1"
+OUT = f"{W}/feat_noise_{MAP_NAME}" + ("_acro" if ACRO else "")
 _G = {}
 
 
@@ -58,19 +59,35 @@ def noise_table():
     return {t: c / (df.get(t, 0) + 10) for t, c in pos.items()}
 
 
+def initials(s):
+    return "".join(t[0] for t in s.split())
+
+
 def pair_feats(split, noise):
-    rec = pd.read_parquet(f"{W}/{split}_rec.parquet", columns=["id", "nf"]).set_index("id")
+    """ACRO=1 adds `acro`: the candidate's core name is the initials of the S1's full or core name (2+
+    letters; train truth rate at the same house number 98.5 %), and drops acronym tokens from the noise
+    lookup (an unseen acronym such as 'ea' or 'cmsb' would otherwise score 0 = descriptor)."""
+    rec = pd.read_parquet(f"{W}/{split}_rec.parquet", columns=["id", "nf", "nc"]).set_index("id")
     c = pd.read_parquet(f"{W}/{split}_cands.parquet", columns=["s1", "cand"])
-    ex = extras(rec.nf.reindex(c.s1.values).values, rec.nf.reindex(c.cand.values).values)
-    zmin, zmax, zzero = [], [], []
-    for e in ex:
+    a_nf, a_nc = rec.nf.reindex(c.s1.values).values, rec.nc.reindex(c.s1.values).values
+    b_nc = rec.nc.reindex(c.cand.values).values
+    ex = extras(a_nf, rec.nf.reindex(c.cand.values).values)
+    zmin, zmax, zzero, acro = [], [], [], []
+    for e, fa, ca, cb in zip(ex, a_nf, a_nc, b_nc):
+        if ACRO:
+            ini = {initials(fa), initials(ca)}
+            cbj = cb.replace(" ", "")
+            acro.append(float(len(cbj) >= 2 and cbj in ini))
+            e = [t for t in e if t not in ini]
         z = [noise.get(FR_EN.get(t, t), 0.0) for t in e]
         zmin.append(min(z) if z else np.nan)
         zmax.append(max(z) if z else np.nan)
         zzero.append(sum(v == 0 for v in z))
     c["nz_min"], c["nz_max"], c["nz_zero"] = np.float32(zmin), np.float32(zmax), np.float32(zzero)
+    if ACRO:
+        c["acro"] = np.float32(acro)
     c.to_parquet(f"{OUT}/{split}.parquet")
-    print(split, len(c), flush=True)
+    print(split, len(c), "acronym pairs", int(sum(acro)), flush=True)
 
 
 if __name__ == "__main__":
