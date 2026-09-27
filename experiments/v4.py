@@ -8,6 +8,7 @@ orphans). Test has ~1.9x more distractors per S1 than train (5.8 vs 4.7 S2/S3 re
 address-less rate), so WNEG ~2 moves the training prior toward test.
 $ER_WORK must hold train_rec, test_rec, roles, gt, train_cands, test_cands.
 env XGB: JSON overrides of train.PARAMS, e.g. XGB='{"max_depth": 10, "eta": 0.03}'.
+env TRN_FRAC (default 1): train on this fraction of the trn S1s (learning curve).
 """
 import glob, itertools, json, os, sys
 import numpy as np, pandas as pd, xgboost as xgb
@@ -54,6 +55,10 @@ def run(tag, drop, bs):
     f["role"] = f.s1.map(roles.set_index("s1").role)
     feats1 = [c for c in f.columns if c not in F.AUX + ["y", "role"] + drop]
     trn, val = f[f.role == "trn"].reset_index(drop=True), f[f.role == "val"].reset_index(drop=True)
+    frac = float(os.environ.get("TRN_FRAC", 1))
+    if frac < 1:
+        keep = pd.Series(trn.s1.unique()).sample(frac=frac, random_state=1)
+        trn = trn[trn.s1.isin(keep)].reset_index(drop=True)
     # distractor = candidate that matches no S1 anywhere in train (sibling / orphan record)
     wneg = float(os.environ.get("WNEG", 1))
     w = np.where((trn.y == 0) & ~trn.cand.isin(gt_all.cand), wneg, 1.0).astype(np.float32)

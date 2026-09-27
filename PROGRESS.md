@@ -133,20 +133,38 @@ Rules: no external data lookup (disqualification); final models must be MIT/Apac
    ```
    → `results_v3_nocluster/b-2.5/matching_results.tsv`.
 
-## Next steps (can be split across teammates)
-0. **Submit the v4 probes** in the order listed in the v4 section; log them in `results_summary/leaderboard.csv`.
-   Pick the winner's (weight, b, cluster features) and then port it into `train.py` (drop list + `WNEG`) so the
-   final package reproduces it end to end.
-1. **Cross-encoder feature** (running): when `ce_fold0/1.parquet` arrive, merge as a feature into the cached
-   features and retrain on top of the v4 winner; probe at the winner's b.
-2. **Recall** (60 % of the remaining val loss): address-less copies of names shared by several S1s, and alias
-   names at the S1's exact address; 1781 of 5768 val FNs are outside the candidate set (add a
-   same-house-number + same-street blocking pass).
-3. **Synthetic sibling entities** — superseded by the label-free sibling features + `WNEG`; revisit only if
-   the leaderboard does not move.
-4. **Final package** (due with the last submission): port the chosen v4 variant into `train.py`;
-   regenerate `candidate_pairs.tsv` (8.5/S1); fill `Documentation_template.md` (team name + members needed);
-   zip `output/` + `code/business_entity_resolution/` + documentation.
-4. Unsubmitted probes, ready on Siddhartha's machine ([experiments/probes.py](experiments/probes.py)):
+## Research after v4c (2026-09-27): where the remaining loss is
+All numbers on v4c; "calibrated" = a=1.4, b=-2.5 (the submitted rule).
+
+| measurement | result | reading |
+|---|---|---|
+| val loss split at the submitted rule (F 0.98513) | removing all FPs +0.0015; adding all in-candidate FNs +0.0106; 1781 FNs outside candidates | on val, recall is ~85 % of the loss |
+| in-candidate FNs by type (5581) | address-less 3157, same tokens 793, low name similarity 658, swap 447, extra 293 | address-less copies dominate |
+| address-less exact-name candidates vs number of S1s sharing the name | 1 S1: 93 % match (model 0.88); 2: 43 % (model 0.10); 3: 30 %; ≥6: 3 % | ambiguous by construction beyond 1 owner; b=-2.5 gives up the 2–3-owner cases |
+| blocking misses (1781) | 71 % address-less; exact core-name match only 24 %, and a core name is shared by ~110 S2/S3 records per S1 on average | a name blocking pass would explode the candidate set for little recall → **not worth it** |
+| uncertain pairs (0.1 < p' < 0.9) per S1 | val 0.10–0.11; test US 0.19, India 0.15, **France 0.44** | test is 1.5–4x harder than val; France is the hot spot |
+| model-expected F0.5 on test (Monte Carlo from its own probabilities; optimistic by ~0.002 on val) | France 0.960, US 0.981, India 0.983, all 0.979 | loss shares ≈ France 0.006, US 0.007, India 0.008 |
+| France uncertain pairs | 23 % are one-word swaps (`ptits sportive sci` vs `ptits federation sci`); 42 % at a near house number | French names come from a small generic vocabulary (club, comite, amicale, sportive…) |
+| same-address swaps, US/India train | the swapped-in word is almost always the generator's noise set (center 99 %, services 99 %, service, partners, plus); real descriptors (holdings, public, ventures) are 0 % | in France the swapped-in words are ordinary French words, so train gives no direct evidence; a copy-slot test was inconclusive |
+| learning curve (trn S1s) | 100k → 200k: best val +0.0005, at b=-2.5 +0.0011 | more training entities still help (needs blocking for more S1s) |
+| capacity (depth 10, eta 0.03) | 0.98670 vs 0.98668 | XGBoost tuning is exhausted |
+| ensembles of v4 variants | ≤ +0.0001 | not worth a submission |
+
+## Next steps, ranked by expected leaderboard gain per effort
+1. **v4c + distractor weighting** (`--wneg 2`, cached features, ~12 min): corrects the 1.9x test distractor
+   prior inside the model instead of via b; with v4 it cost nothing on val. Probe at b=-2.5 and b=-1.5.
+2. **Per-country decision rule**: France has 4x the uncertain pairs. Probe France at a stricter b (-3.5) and
+   at a looser one (-1.5), US/India at -2.5; only the leaderboard can tell which way France is miscalibrated.
+3. **Cross-encoder feature** (Kaggle run): a multilingual pair model reads French descriptors semantically
+   (groupe ≈ group, holding ≈ holdings, participations ≈ holdings); train it on hard pairs (same street,
+   descriptor / swap / near number) from train. Largest expected gain for France.
+4. **More training entities**: block 400k more S1s (the `unused` role) and double trn; learning curve suggests
+   +0.0005–0.001 at the submitted rule.
+5. **Address-less shared names**: model p is 0.10 at 43 % true rate for 2-owner names; a per-S1 rule
+   "add the address-less exact-name record when this S1 is the only owner of that name among S1s whose
+   candidate lists contain it" is a cheap post-processing probe.
+6. **Final package**: fill `Documentation_template.md` (team name + members needed); zip
+   `output_v4c/` + `code/business_entity_resolution/` + documentation.
+7. Unsubmitted probes, ready on Siddhartha's machine ([experiments/probes.py](experiments/probes.py)):
    `results_probes/ensemble4_b-2.5` (mean logit of the 4 v3 models) and `nocluster_{US,India,France}_strict`
    (one country at b = -3.5, the rest at -2.5). Also `results_v3_nocluster/b-2.0`. Leaderboard scores not yet known.
