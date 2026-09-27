@@ -10,10 +10,52 @@ Status as of **2026-09-27**. Read this first; the code README is
 | Best public leaderboard | **0.973444** — v3 "nocluster" model, decision b = -2.5 |
 | Leaderboard top | ~0.99 |
 | Submissions | max **5 per day** (behaves like a rolling 24 h window) |
-| Running now | cross-encoder scores on Kaggle ([notebooks/kaggle_ce_cells.md](notebooks/kaggle_ce_cells.md)) |
+| Final choice | **v4c** (v4 features + cluster features, a=1.4 b=-2.5): `~/Desktop/results/output_v4c/`; models in `~/Desktop/results/work_v4c/` (`predict.py --work` reproduces it; `train.py` default = v4c) |
 | Candidate set | 8.5 pairs per S1 (organizers rank smaller candidate sets higher in the final review) |
 
 Full leaderboard history: [results_summary/leaderboard.csv](results_summary/leaderboard.csv).
+
+## v4 (2026-09-27): sibling-token + house-number features, distractor weighting
+Code: `common.house_number`, `features.token_stats / tok_diff / hn_relation`, `experiments/v4.py`.
+Local work dir: `~/Desktop/results/work2` (prep re-run with the `hn` column; candidates = v1 candidates
+filtered to forward top-8 ∪ reverse rank-1 → 8.49/S1 test, 8.23/S1 train, val recall ceiling 0.9897).
+
+Findings behind it:
+1. **Sibling descriptors are token-identifiable.** Distractors are the S1 name + a descriptor at a nearby house
+   number. Descriptors never appear as the extra token of a true match in train: private (14282 negatives /
+   0 positives), group 7476/0, holdings 7443/0, enterprises, industries, ventures, overseas, infratech, exports,
+   north/south/…/midtown/harbor/summit (≈1500/0 each). Noise words of true matches (inc, services, center, lp)
+   are balanced. The old normalization *removed* several of them (`private`, `group`, `holdings`, `india`, …
+   are in `LEGAL`, so the core name hides them).
+2. **The discriminator is label-free, so it transfers to France.** For every token one name has and the other
+   lacks: the rate at which the pair's house numbers agree, per country, over all candidate pairs of the split.
+   Sibling words: <1–5 %; noise words: 40–85 %. On test France the same statistic singles out international,
+   distribution, participations, holding (2–5 %) vs sarl/sas/eurl/sci (83 %).
+3. **House number parsing.** First number of the first non-unit/floor/box component
+   (`Fl 1, Hillsboro, OR, 4544 Cornell Rd` → 4544). Relation classes: equal / one digit dropped / within 50 /
+   further / one missing / both missing. Train match rates: equal 88 %, near 6 %, far 8 %. True copies differ
+   from S1 by per-record noise only (S2 and S3 alike: 89–90 % equal, 2.4 % near, 4 % digit drop).
+4. **Test has ~1.9x more distractors per S1, nothing else changed.** Test S2+S3 per S1 = 5.5–5.8 vs 4.7 in
+   train; the address-less rate per S1 is identical (0.14/0.17), and the predicted matches-per-S1 histogram on
+   test equals the true histogram on val. Training with negatives whose candidate matches no S1 at all weighted
+   x2–3 (`WNEG`) moves the prior toward test and does not cost validation.
+5. Remaining val loss is recall: 5768 FN vs 662 FP (1781 FN outside the candidate set); FNs are mostly
+   address-less copies of names shared by several S1s, and random alias names at the S1's exact address.
+
+| run | features / weights | val F0.5 (best a,b) | val @ a=1.4 b=-2.5 | test pairs @ b=-2.5 |
+|---|---|---|---|---|
+| base (≈ v3 nocluster, local rebuild) | no new features | 0.98322 | 0.98046 | 5 699 735 |
+| v4 | + 12 new features, no cluster features | 0.98596 | 0.98441 | 5 704 832 |
+| v4w2 | v4, WNEG=2 | 0.98613 | 0.98321 | 5 678 813 |
+| v4w3 | v4, WNEG=3 | 0.98629 | 0.98275 | 5 682 793 |
+| v4c | v4 + cluster features | 0.98668 | 0.98513 | 5 738 431 |
+
+Probe files (all PASS the validator incl. `--check-ids`): `~/Desktop/results/probes/<run>_b<b>/`.
+Submission order (one change per probe, compare with 0.973444 = v3 nocluster b=-2.5):
+1. `v4_b-2.5` — new features only, same b as the best submission.
+2. `v4w2_b-1.5` — distractor weighting, milder calibration shift (weighting replaces part of b).
+3. `v4w3_b-1.5` / `v4w3_b-0.5` — stronger weighting; tells whether the weight or b carries the shift.
+4. `v4c_b-2.5` — cluster features back; they cost 0.003 on the LB in v3, siblings are now explicit.
 
 ## Task recap
 For each Source-1 (S1) record, list all matching S2/S3 records. Score = macro F0.5 per S1 (precision counts
@@ -92,11 +134,17 @@ Rules: no external data lookup (disqualification); final models must be MIT/Apac
    → `results_v3_nocluster/b-2.5/matching_results.tsv`.
 
 ## Next steps (can be split across teammates)
+0. **Submit the v4 probes** in the order listed in the v4 section; log them in `results_summary/leaderboard.csv`.
+   Pick the winner's (weight, b, cluster features) and then port it into `train.py` (drop list + `WNEG`) so the
+   final package reproduces it end to end.
 1. **Cross-encoder feature** (running): when `ce_fold0/1.parquet` arrive, merge as a feature into the cached
-   features and retrain v3-nocluster; probe at b = -2.5.
-2. **Synthetic sibling entities** for training: for trn S1s, create 2–3 records with S1 name + extra word and a
-   nearby house number, labelled non-match; needs re-embedding (Kaggle GPU). Not started.
-3. **Final package** (due with the last submission): port the v3 feature drop (+ CE if kept) into `train.py`;
+   features and retrain on top of the v4 winner; probe at the winner's b.
+2. **Recall** (60 % of the remaining val loss): address-less copies of names shared by several S1s, and alias
+   names at the S1's exact address; 1781 of 5768 val FNs are outside the candidate set (add a
+   same-house-number + same-street blocking pass).
+3. **Synthetic sibling entities** — superseded by the label-free sibling features + `WNEG`; revisit only if
+   the leaderboard does not move.
+4. **Final package** (due with the last submission): port the chosen v4 variant into `train.py`;
    regenerate `candidate_pairs.tsv` (8.5/S1); fill `Documentation_template.md` (team name + members needed);
    zip `output/` + `code/business_entity_resolution/` + documentation.
 4. Unsubmitted probes, ready on Siddhartha's machine ([experiments/probes.py](experiments/probes.py)):

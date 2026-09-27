@@ -2,22 +2,29 @@
 
 stage 1 : pair features -> p1 (out-of-fold on trn S1s, full model for val/test)
 stage 2 : stage-1 features + group context over p1 -> p2
-decision: calibration (a, b) + expected-F0.5 subset selection (or threshold), tuned on val
+decision: calibration (a, b) + expected-F0.5 subset selection. The val-optimal rule is reported; the rule written
+          to model_cfg.json is expf with --a/--b (test has ~1.9x more distractors than train, so the
+          leaderboard prefers a stricter b than val; b=-2.5 was the leaderboard optimum for v3/v4).
+
+variants (leaderboard probes): default = v4c (final, best leaderboard); --drop-cluster = v4;
+--wneg 2|3 = v4w2|v4w3 (negatives whose candidate matches no S1 anywhere get this training weight).
 """
 import argparse
 import itertools
 import json
+import shutil
 
 import numpy as np
 import pandas as pd
-import torch
 import xgboost as xgb
 
 import common as C
 import features as F
 
+# device via nvidia-smi, not torch: torch's OpenMP runtime loaded before the forked feature workers and
+# XGBoost's OpenMP threads segfaults on macOS
 PARAMS = dict(objective="binary:logistic", eval_metric="logloss", tree_method="hist",
-              device="cuda" if torch.cuda.is_available() else "cpu", max_depth=8, eta=0.05,
+              device="cuda" if shutil.which("nvidia-smi") else "cpu", max_depth=8, eta=0.05,
               subsample=0.8, colsample_bytree=0.8, min_child_weight=2, max_bin=256)
 
 
@@ -37,12 +44,16 @@ def featurize(work, split, cands, chunk):
     F.add_freq(rec)
     idf = F.idf_tables(rec)
     cands = cands.sort_values("s1", kind="stable").reset_index(drop=True)
+    ts = F.token_stats(rec, cands)
     for ch in chunks(cands, chunk):
-        yield F.build(rec, ch, idf)
+        yield F.build(rec, ch, idf, ts)
 
 
-def fit(X, y, Xv, yv, rounds=5000):
-    d = xgb.QuantileDMatrix(X, label=y)
+CLUSTER = ["g_same_fn", "g_same_fn_top", "fn_support", "fn_top"]  # "same house number => match" signals
+
+
+def fit(X, y, Xv, yv, w=None, rounds=5000):
+    d = xgb.QuantileDMatrix(X, label=y, weight=w)
     dv = xgb.QuantileDMatrix(Xv, label=yv, ref=d)
     return xgb.train(PARAMS, d, rounds, evals=[(dv, "v")], early_stopping_rounds=100, verbose_eval=500)
 
@@ -66,21 +77,29 @@ def main():
     ap.add_argument("--work", required=True)
     ap.add_argument("--folds", type=int, default=4)
     ap.add_argument("--chunk", type=int, default=50_000)
+    ap.add_argument("--drop-cluster", action="store_true", help="drop the CLUSTER features (v4)")
+    ap.add_argument("--wneg", type=float, default=1.0, help="training weight of distractor negatives")
+    ap.add_argument("--a", type=float, default=1.4)
+    ap.add_argument("--b", type=float, default=-2.5)
     a = ap.parse_args()
     W = a.work
+    drop = CLUSTER if a.drop_cluster else []
 
     roles = pd.read_parquet(f"{W}/roles.parquet")
     roles = roles[roles.role.isin(["trn", "val"])]
-    gt = pd.read_parquet(f"{W}/gt.parquet")
-    gt = gt[gt.s1.isin(roles.s1)].drop_duplicates()
+    gt_all = pd.read_parquet(f"{W}/gt.parquet")
+    gt = gt_all[gt_all.s1.isin(roles.s1)].drop_duplicates()
     cands = pd.read_parquet(f"{W}/train_cands.parquet")
     f = pd.concat(featurize(W, "train", cands, a.chunk), ignore_index=True)
     f["y"] = f.merge(gt.assign(y=1), on=["s1", "cand"], how="left").y.fillna(0).values
     f["role"] = f.s1.map(roles.set_index("s1").role)
-    feats1 = [c for c in f.columns if c not in F.AUX + ["y", "role"]]
+    feats1 = [c for c in f.columns if c not in F.AUX + ["y", "role"] + drop]
     print("pairs", len(f), "pos rate", round(f.y.mean(), 4), "features", len(feats1), flush=True)
 
     trn, val = f[f.role == "trn"].reset_index(drop=True), f[f.role == "val"].reset_index(drop=True)
+    del f
+    w = np.where((trn.y == 0) & ~trn.cand.isin(gt_all.cand), a.wneg, 1.0).astype(np.float32)
+    del gt_all
     fold = pd.Series(np.random.default_rng(0).integers(0, a.folds, trn.s1.nunique()), index=trn.s1.unique())
     fold = trn.s1.map(fold).values
 
@@ -88,19 +107,19 @@ def main():
     oof, iters = np.zeros(len(trn), np.float32), []
     for k in range(a.folds):
         tr, te = fold != k, fold == k
-        bst = fit(trn.loc[tr, feats1], trn.y[tr], trn.loc[te, feats1], trn.y[te])
+        bst = fit(trn.loc[tr, feats1], trn.y[tr], trn.loc[te, feats1], trn.y[te], w[tr])
         oof[te] = predict(bst, trn.loc[te, feats1])
         iters.append(bst.best_iteration + 1)
     n1 = int(np.mean(iters) * 1.1)
-    m1 = xgb.train(PARAMS, xgb.QuantileDMatrix(trn[feats1], label=trn.y), n1)
+    m1 = xgb.train(PARAMS, xgb.QuantileDMatrix(trn[feats1], label=trn.y, weight=w), n1)
     m1.set_attr(best_iteration=str(n1 - 1))
     p1_val = predict(m1, val[feats1])
 
     # stage 2
     trn2, val2 = F.stage2(trn, oof), F.stage2(val, p1_val)
-    feats2 = [c for c in trn2.columns if c not in F.AUX + ["y", "role"]]
+    feats2 = [c for c in trn2.columns if c not in F.AUX + ["y", "role"] + drop]
     es = fold == 0
-    m2 = fit(trn2.loc[~es, feats2], trn2.y[~es], trn2.loc[es, feats2], trn2.y[es])
+    m2 = fit(trn2.loc[~es, feats2], trn2.y[~es], trn2.loc[es, feats2], trn2.y[es], w[~es])
     p2_val = predict(m2, val2[feats2])
 
     # evaluation on val S1s (singletons included: every val S1 appears, candidates or not)
@@ -122,13 +141,16 @@ def main():
         s = C.f05_per_entity(C.decide(scored, mode=mode, **prm), truth, val_ids).mean()
         if s > best[0]:
             best = (s, dict(mode=mode, **{k: float(v) for k, v in prm.items()}))
-    res["decision"] = best[1]
-    sel = C.decide(scored, **best[1])
-    res["final"] = report(f"final {best[1]}", sel, truth, val_ids, meta)
+    res["decision_val_best"] = best[1]
+    res["val_best"] = report(f"val-best {best[1]}", C.decide(scored, **best[1]), truth, val_ids, meta)
+    res["decision"] = dict(mode="expf", a=a.a, b=a.b)
+    sel = C.decide(scored, **res["decision"])
+    res["final"] = report(f"final (written) {res['decision']}", sel, truth, val_ids, meta)
 
     m1.save_model(f"{W}/stage1.json")
     m2.save_model(f"{W}/stage2.json")
-    json.dump({"feats1": feats1, "feats2": feats2, **res}, open(f"{W}/model_cfg.json", "w"), indent=1)
+    json.dump({"feats1": feats1, "feats2": feats2, "wneg": a.wneg, "drop_cluster": a.drop_cluster, **res},
+              open(f"{W}/model_cfg.json", "w"), indent=1)
 
     # error dump for analysis
     rec = pd.read_parquet(f"{W}/train_rec.parquet", columns=["id", "nf", "af"]).set_index("id")

@@ -112,6 +112,24 @@ ORDINAL = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b")
 JOIN = re.compile(r"(?<=[0-9a-z])[-/](?=[0-9a-z])")
 NUM_J = re.compile(r"\d+[a-z]?(?![a-z0-9])")
 LEAD0 = re.compile(r"^0+(?=\d)")
+# house number = leading number of the first address component that is not a unit/floor/box line
+HN_SKIP = re.compile(r"^(?:unit|apt|apartment|fl|floor|suite|ste|pmb|po box|p\.?o\.? box|box|room|rm|bldg|"
+                     r"building|lot|#\s*(?:apt|apartment|unit|lot|\d+[a-z]?$))\b")
+HN_NUM = re.compile(r"^\W*(?:no\.?|n[°º]|#+|h\.?\s*no\.?|kh\.?\s*no\.?|plot\s*no\.?|door\s*no\.?)?\s*[-(]*\s*0*(\d+)")
+
+
+def house_number(addr):
+    """'Fl 1, Hillsboro, OR, 4544 Cornell Rd' -> '4544'; suffixes/ranges/leading zeros dropped; '' if none."""
+    for c in anyascii(addr.translate(ZW)).lower().split(","):
+        c = c.strip()
+        if not c or HN_SKIP.match(c):
+            continue
+        m = HN_NUM.match(c)
+        if m and re.search(r"\w", c[m.end():]):
+            return m.group(1)[:12]
+    return ""
+
+
 
 
 # ---------------------------------------------------------------- normalizers
@@ -172,7 +190,7 @@ def normalize_row(args):
     name, addr, country = args
     nf, nc, dom = norm_name(name, _MAPS["tok"])
     af, nj, ns = norm_addr(addr, country, _MAPS["comp"], _MAPS["tok"])
-    return nf, nc, dom, af, nj, ns, bool(NONLATIN.search(name)), bool(NONLATIN.search(addr))
+    return nf, nc, dom, af, nj, ns, bool(NONLATIN.search(name)), bool(NONLATIN.search(addr)), house_number(addr)
 
 
 _MAPS = {"tok": {}, "comp": {}}
@@ -267,6 +285,9 @@ if __name__ == "__main__":  # self-check
     print(norm_addr("N° 41 R. DU VAL SAINT-MARTIN, PORNIC", "France", {}, {}))
     assert norm_name("Ear Nose & Throat P.C.", {})[1] == "ear nose throat"
     assert norm_addr("8-2-293/83A, Road No. 44", "India", {}, {})[1] == "8229383a 44"
+    assert house_number("Fl 1, Hillsboro, OR, 4544 Cornell Road") == "4544"
+    assert house_number("393-D LAKE POINTE DR, MIDDLE ISLAND, NY") == "393"
+    assert house_number("No 17 Impasse Scalbert, Lille") == "17" and house_number("Lille, Nord") == ""
     t = pd.DataFrame({"s1": [1, 1, 2], "cand": [10, 11, 20]})
     p = pd.DataFrame({"s1": [1, 1, 1, 3], "cand": [10, 11, 12, 30]})
     f = f05_per_entity(p, t, [1, 2, 3, 4])

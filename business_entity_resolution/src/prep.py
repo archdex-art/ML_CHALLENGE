@@ -11,7 +11,7 @@ import pandas as pd
 
 import common as C
 
-COLS = ["nf", "nc", "dom", "af", "nj", "ns", "nl_name", "nl_addr"]
+COLS = ["nf", "nc", "dom", "af", "nj", "ns", "nl_name", "nl_addr", "hn"]
 
 
 def load(data, split, src):

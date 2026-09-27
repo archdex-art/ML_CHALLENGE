@@ -11,10 +11,10 @@ No external data or services are used; the only download is the pretrained e5 ch
 | file | stage | output (in `--work`) |
 |---|---|---|
 | `src/common.py` | normalization, learned transliteration, F0.5 metric, decision rule | — |
-| `src/prep.py` | learn native-script→Latin maps from train pairs; normalize all records; S1 roles (ft/trn/val) | `maps.json`, `gt.parquet`, `roles.parquet`, `{train,test}_rec.parquet` |
+| `src/prep.py` | learn native-script→Latin maps from train pairs; normalize all records (+ house number `hn`); S1 roles (ft/trn/val) | `maps.json`, `gt.parquet`, `roles.parquet`, `{train,test}_rec.parquet` |
 | `src/finetune.py` | contrastive fine-tune of e5 on `ft` S1 pairs | `e5ft/` |
 | `src/block.py` | embeddings + exact GPU kNN per country (S1→top-K pool, pool→top-R S1) | `{split}_cands.parquet`, `recall.json` |
-| `src/features.py` | pair features + stage-2 context features | — |
+| `src/features.py` | pair features (incl. house-number relation and label-free sibling-token statistics computed per split and country) + stage-2 context features | — |
 | `src/train.py` | stage-1 OOF, stage-2, decision tuning, validation report | `stage1.json`, `stage2.json`, `model_cfg.json`, `val_errors.tsv` |
 | `src/predict.py` | score test, write submission files | `output/matching_results.tsv`, `output/candidate_pairs.tsv` |
 | `src/ce.py` | cross-encoder pair scores (2 folds, one per GPU) — extra matcher feature, experimental | `ce_fold{0,1}.parquet` |
