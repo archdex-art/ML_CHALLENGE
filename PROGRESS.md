@@ -151,6 +151,11 @@ All numbers on v4c; "calibrated" = a=1.4, b=-2.5 (the submitted rule).
 | ensembles of v4 variants | ≤ +0.0001 | not worth a submission |
 
 ## Next steps, ranked by expected leaderboard gain per effort
+Ready probes (all PASS `--check-ids`, in `~/Desktop/results/probes/`):
+`v4cw2_b-2.5`, `v4cw2_b-1.5` (v4c trained with WNEG=2, val 0.98664) and `v4c_FR-3.5`, `v4c_FR-1.5`
+(v4c, France at b=-3.5 / -1.5, US and India at -2.5). Item 5 below was checked on val: for 2-owner names the
+true rate is 43 %, and adding a 43 %-precision record to an S1 whose other matches are found lowers its
+expected F0.5 (3 of 3 found: 1.00 -> 0.88), so it is dropped.
 1. **v4c + distractor weighting** (`--wneg 2`, cached features, ~12 min): corrects the 1.9x test distractor
    prior inside the model instead of via b; with v4 it cost nothing on val. Probe at b=-2.5 and b=-1.5.
 2. **Per-country decision rule**: France has 4x the uncertain pairs. Probe France at a stricter b (-3.5) and
