@@ -6,7 +6,7 @@ decision: calibration (a, b) + expected-F0.5 subset selection. The val-optimal r
           to model_cfg.json is expf with --a/--b (test has ~1.9x more distractors than train, so the
           leaderboard prefers a stricter b than val; b=-2.5 was the leaderboard optimum for v3/v4).
 
-variants (leaderboard probes): default = v4c (final, best leaderboard); --drop-cluster = v4;
+variants (leaderboard probes): default = v4 (cluster features dropped; v4c scored 0.971562 on the LB vs 0.973444); --keep-cluster = v4c;
 --wneg 2|3 = v4w2|v4w3 (negatives whose candidate matches no S1 anywhere get this training weight).
 """
 import argparse
@@ -77,13 +77,13 @@ def main():
     ap.add_argument("--work", required=True)
     ap.add_argument("--folds", type=int, default=4)
     ap.add_argument("--chunk", type=int, default=50_000)
-    ap.add_argument("--drop-cluster", action="store_true", help="drop the CLUSTER features (v4)")
+    ap.add_argument("--keep-cluster", action="store_true", help="keep the CLUSTER features (v4c)")
     ap.add_argument("--wneg", type=float, default=1.0, help="training weight of distractor negatives")
     ap.add_argument("--a", type=float, default=1.4)
     ap.add_argument("--b", type=float, default=-2.5)
     a = ap.parse_args()
     W = a.work
-    drop = CLUSTER if a.drop_cluster else []
+    drop = [] if a.keep_cluster else CLUSTER
 
     roles = pd.read_parquet(f"{W}/roles.parquet")
     roles = roles[roles.role.isin(["trn", "val"])]
@@ -149,7 +149,7 @@ def main():
 
     m1.save_model(f"{W}/stage1.json")
     m2.save_model(f"{W}/stage2.json")
-    json.dump({"feats1": feats1, "feats2": feats2, "wneg": a.wneg, "drop_cluster": a.drop_cluster, **res},
+    json.dump({"feats1": feats1, "feats2": feats2, "wneg": a.wneg, "keep_cluster": a.keep_cluster, **res},
               open(f"{W}/model_cfg.json", "w"), indent=1)
 
     # error dump for analysis

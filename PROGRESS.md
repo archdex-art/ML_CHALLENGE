@@ -10,7 +10,7 @@ Status as of **2026-09-27**. Read this first; the code README is
 | Best public leaderboard | **0.973444** — v3 "nocluster" model, decision b = -2.5 |
 | Leaderboard top | ~0.99 |
 | Submissions | max **5 per day** (behaves like a rolling 24 h window) |
-| Final choice | **v4c** (v4 features + cluster features, a=1.4 b=-2.5): `~/Desktop/results/output_v4c/`; models in `~/Desktop/results/work_v4c/` (`predict.py --work` reproduces it; `train.py` default = v4c) |
+| Leaderboard v4c | **0.971562** (< 0.973444): cluster features hurt the LB again despite +0.0007 val. Next: `v4_b-2.5` (no cluster), then `v4_USIN+base_FR` / `v4_FR-3.5` (France isolation). v4 models: `~/Desktop/results/work_v4/`; `train.py` default = v4 |
 | Candidate set | 8.5 pairs per S1 (organizers rank smaller candidate sets higher in the final review) |
 
 Full leaderboard history: [results_summary/leaderboard.csv](results_summary/leaderboard.csv).
@@ -151,7 +151,10 @@ All numbers on v4c; "calibrated" = a=1.4, b=-2.5 (the submitted rule).
 | ensembles of v4 variants | ≤ +0.0001 | not worth a submission |
 
 ## Next steps, ranked by expected leaderboard gain per effort
-Ready probes (all PASS `--check-ids`, in `~/Desktop/results/probes/`):
+Ready probes (all PASS `--check-ids`, in `~/Desktop/results/probes/`). After v4c = 0.971562, the v4c-based
+ones are deprioritised; submit in this order: `v4_b-2.5`; if it is below 0.973444, `v4_USIN+base_FR`
+(v4 for US/India, no-new-features base for France: v4 adds 43k same-address one-word-swap pairs in France);
+else `v4_FR-3.5`, then `v4w2_b-1.5`. Older v4c-based probes:
 `v4cw2_b-2.5`, `v4cw2_b-1.5` (v4c trained with WNEG=2, val 0.98664) and `v4c_FR-3.5`, `v4c_FR-1.5`
 (v4c, France at b=-3.5 / -1.5, US and India at -2.5). Item 5 below was checked on val: for 2-owner names the
 true rate is 43 %, and adding a 43 %-precision record to an S1 whose other matches are found lowers its

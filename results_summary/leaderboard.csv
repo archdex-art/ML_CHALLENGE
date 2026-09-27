@@ -8,3 +8,4 @@ date_ist,model,decision_b,matched_pairs,public_lb_f05,notes
 2026-09-26,v3 nocluster,-3.5,5585289,0.971253,threshold past its peak
 2026-09-26,v3 w4,-2.5,5647130,0.97326,sibling-pattern negatives weighted x4; val 0.98262
 2026-09-26,v3 lesscontext,-2.5,5667395,0.972429,9 more within-S1 context features dropped; val 0.98263
+2026-09-27,v4c,-2.5 (a=1.4),5738431,0.971562,v4 features + cluster features; val 0.98668 - cluster features hurt the LB again

@@ -13,7 +13,7 @@ N_TRN="${N_TRN:-60000}"    # S1 entities the matcher trains on
 N_FT="${N_FT:-100000}"     # S1 entities (1 pair each) for the embedding fine-tune
 CHUNK="${CHUNK:-20000}"    # S1 entities per feature-building chunk (lower = less RAM)
 FT_BS="${FT_BS:-64}"     # fine-tune batch size: 64 for laptops, 256 on a 24 GB GPU (used in the Kaggle run)
-TRAIN_ARGS="${TRAIN_ARGS:-}" # matcher variant, default v4c; e.g. "--drop-cluster" (v4), "--wneg 2", "--b -1.5"
+TRAIN_ARGS="${TRAIN_ARGS:-}" # matcher variant, default v4; e.g. "--keep-cluster" (v4c), "--wneg 2", "--b -1.5"
 
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES   # macOS: allow fork() after torch is loaded
 export PYTORCH_ENABLE_MPS_FALLBACK=1             # macOS: fall back to CPU for any op MPS lacks
