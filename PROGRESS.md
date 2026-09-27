@@ -133,6 +133,29 @@ Rules: no external data lookup (disqualification); final models must be MIT/Apac
    ```
    → `results_v3_nocluster/b-2.5/matching_results.tsv`.
 
+## Plan for the last 2 submissions (2026-09-27)
+Evidence that the teacher beats our models on disagreements overall: across the four known LB points
+(v1 0.954, v4c 0.971562, base ~0.973444, teacher 0.98155) LB ~= 0.98155 - 0.43 * (1 - agreement) (slopes
+0.51, 0.44, 0.42 between neighbours), which puts v6w2 alone at ~0.975. So stay on the teacher and change only
+pairs where our model is extreme and validation shows that confidence is reliable (val truth rate by name-
+difference type: 0.06-1.4 % at p' < 0.01, 99.6-100 % at p' > 0.99).
+1. `FINAL1_teacher_conf_edits_USIN` — teacher; US+India only: remove 5 645 pairs with p' < 0.01, add 5 692
+   with p' > 0.99 (record not given to another S1); 11 106 S1s touched. US/India match the training
+   distribution, so the validation calibration applies.
+2. If 1 beats 0.98155: `FINAL2_teacher_conf_edits_all` (adds France: remove 5 378, add 3 460; France has no
+   training data, so its calibration is unverified). If 1 does not beat it, keep the teacher as final.
+Expected size of the change: about +/-0.001-0.002. This will not reach 0.99.
+
+## Leaderboard group testing (needs more submissions than are left)
+Ruled out: ID / file-order leak (Spearman of S1 vs matched-record row order and id numbers -0.0005 / -0.0011,
+same as random pairs); street agreement at equal house numbers is already calibrated (p' within 0.01 of truth).
+Single-pattern fixes are too small: `teacher_plus_acronym_samenum` (4 499 same-address acronym pairs, train
+truth 98.5 %, teacher keeps 54 % in France) moves the score by ~0.0001 at most.
+Teacher-vs-v6w2 disagreement buckets, each a probe (teacher with one bucket flipped): `flip_USIN_drop`
+106 977 pairs / 99 807 S1s, `flip_FR_drop` 31 135 / 28 990, `flip_USIN_add` 29 748 / 28 765, `flip_FR_add`
+13 239 / 12 484; combine winners with `experiments/compose.py`.
+v7w2 (+ acronym feature, `ACRO=1`): val 0.98652, agreement 0.98524.
+
 ## Teacher file (0.98155 on the LB) and the agreement proxy (2026-09-27)
 A team submission scored **0.98155** (`~/Desktop/results/teacher_098155.tsv`). All its pairs lie inside our
 8.5/S1 candidate set. Proxy = macro F0.5 of our test selection scored against the teacher's pairs as truth.
