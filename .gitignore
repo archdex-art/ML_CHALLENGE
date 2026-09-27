@@ -1,0 +1,16 @@
+# Whitelist: only code, docs and small summaries are versioned.
+# Data (organizers'), outputs, caches and model weights stay local / on Kaggle.
+/*
+!/.gitignore
+!/README.md
+!/PROGRESS.md
+!/business_entity_resolution/
+!/experiments/
+!/notebooks/
+!/results_summary/
+__pycache__/
+*.pyc
+.venv/
+checkpoints/
+*.parquet
+*.log

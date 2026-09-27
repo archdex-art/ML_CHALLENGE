@@ -1,0 +1,10 @@
+date_ist,model,decision_b,matched_pairs,public_lb_f05,notes
+2026-09-25 20:57,v1,-1.0 (a=2.0),6065512,0.954,K=40 blocking; val F0.5 0.98182
+2026-09-26 00:00,v2,-0.5 (a=1.4),6015509,0.962,orphan-style training + name/address counts + K=8; val 0.98388
+2026-09-26 00:04,v2 probe_strict,-1.5,5895876,0.967,
+2026-09-26 00:07,v2 probe_loose,0.5,6152782,0.954,
+2026-09-26 00:39,v2 probe_strict2,-2.5,5782163,0.969762,
+2026-09-26,v3 nocluster,-2.5,5680362,0.973444,BEST - dropped g_same_fn g_same_fn_top fn_support fn_top; val 0.98288
+2026-09-26,v3 nocluster,-3.5,5585289,0.971253,threshold past its peak
+2026-09-26,v3 w4,-2.5,5647130,0.97326,sibling-pattern negatives weighted x4; val 0.98262
+2026-09-26,v3 lesscontext,-2.5,5667395,0.972429,9 more within-S1 context features dropped; val 0.98263
